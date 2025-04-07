@@ -1,0 +1,44 @@
+#!/bin/bash
+
+#Настройка имени и времени
+hostnamectl set-hsotanme br-srv.au-team.irpo
+timedatectl set-timezone Asia/Vladivostok
+
+#Настройка пользователя sshuser
+useradd sshuser -u 1010
+echo "Пароль для sshuser P@ssw0rd"
+passwd sshuser 
+
+sed -i 's/# WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL/WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL/' /etc/sudoers.d
+usermod -aG wheel sshuser
+#Настройка сети 
+cat <<EOF > /etc/net/ifaces/ens19/options 
+BOOTPROTO=static
+TYPE=eth
+CONFIG_IPV4=yes
+DISABLED=no
+NM_CONTROLLED=no
+EOF
+
+echo 192.168.4.2/27 /etc/net/ifaces/ens19/ipv4address
+echo default via 192.168.4.1 /etc/net/ifaces/ens19/ipv4route
+
+systemctl restart networking 
+
+ip -c a
+
+#Настройка SSH
+
+apt install openssh-common
+cat << EOF > /etc/openssh/sshd_config
+Port 2024
+MaxAuthTries 2
+AllowUsers sshuser
+PermitRootLogin no
+Banner /root/banner
+EOF
+
+echo Authorized access only /root/banner
+
+systemctl restart sshd.service
+systemctl enable --now sshd.service

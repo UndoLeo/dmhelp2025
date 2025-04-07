@@ -1,0 +1,73 @@
+#Настройка имени и времени
+hostnamectl set-hostname hq-srv.au-team.irpo;exec bash
+timedatectl set-timezone Asia/Vladivostok
+
+#Настройка пользователя sshuser
+useradd sshuser -u 1010
+echo "Пароль для sshuser P@ssw0rd"
+passwd sshuser 
+
+sed -i 's/# WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL/WHEEL_USERS ALL=(ALL:ALL) NOPASSWD: ALL/' /etc/sudoers.d
+
+usermod -aG wheel sshuser
+#Настройка vlan 
+mkdir /etc/net/ifaces/ens20.100
+touch /etc/ifaces/ens20.100/options
+cat << EOF > /etc/ifaces/ens20.100/options
+TYPE=vlan
+HOST=ens19
+VID=100
+DISABLED=no
+EOF
+
+touch /etc/ifaces/ens20.100/ipv4address
+touch /etc/ifaces/ens20.100/ipv4route
+echo 192.168.1.2/26 /etc/ifaces/ens20.100/ipv4address
+echo default via 192.168.1.1 /etc/ifaces/ens20.100/ipv4route
+
+#НАстройка dns
+systemctl disable --now bind
+echo nameserver 8.8.8.8 /etc/resolv.conf
+apt-get update
+apt-get install dnsmasq -y
+systemctl enable --now dnsmasq.service
+
+cat << EOF > /etc/dnsmasq.conf
+no-resolv 
+domain=au-team.irpo 
+server=8.8.8.8 
+interface=* 
+address=/hq-rtr.au-team.irpo/192.168.1.1 
+ptr-record=1.1.168.192.in-addr.appa,hq-rtr.au-team.irpo
+cname=moodle.au-team.irpo,hq-rtr.au-team.irpo
+cnmae=wiki.au-team.irpo,hq-rtr.au-team.irpo
+
+address=/br-rtr.au-team.irpo/192.168.4.1
+
+address=/hq-srv.au-team.irpo/192.168.1.2
+ptr-record=2.1.168.192.in-addr.appa,hq-srv.au-team.irpo
+
+address=/hq-cli.au-team.irpo/192.168.2.11
+ptr-record=11.2.168.192.in-addr.appa,hq-cli.au-team.irpo
+
+address=/br-srv.au-team.irpo/192.168.4.2
+EOF
+
+echo 192.168.1.1 hq-rtr.au-team.irpo /etc/hosts
+systemctl restart dnsmasq.service
+
+#Настройка SSH
+
+apt install openssh-common
+cat << EOF > /etc/openssh/sshd_config
+Port 2024
+MaxAuthTries 2
+AllowUsers sshuser
+PermitRootLogin no
+Banner /root/banner
+EOF
+
+echo Authorized access only /root/banner
+
+systemctl restart sshd.service
+systemctl enable --now sshd.service

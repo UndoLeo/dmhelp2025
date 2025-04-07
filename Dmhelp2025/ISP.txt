@@ -1,0 +1,44 @@
+#!/bin/bash
+#Настройка имени и времени
+hostnamectl set-hostname ISP;exec bash
+timedatectl set-timezone Asia/Vladivostok
+
+#Настройка сети и маршрутизцаии
+cat <<EOF > /etc/network/interfaces
+auto ens19
+		iface ens19 inet dhcp
+auto ens20
+		iface ens20 inet static
+		address 172.16.4.1/28
+auto ens21 
+		iface ens21 inet static
+		address 172.16.5.1/28
+EOF
+
+systemctl restart networking
+
+ip -c a
+
+#Настройка айпи форвардинг
+sysctl -w net.ipv4.ip_forward=1
+sysctl -p
+
+#Настройка iptables \\ Проверить что он установлен
+#проверка есть ли iptables 
+$iptables
+#Если он есть то выведит команды
+
+iptables -t nat -A POSTROUTING -s 172.16.4.0/28 -o ens19 -j MASQUERADE
+iptables -t nat -A POSTROUTING -s 172.16.5.0/28 -o ens19 -j MASQUERADE
+iptables-save > /root/rules
+export EDITOR=nano
+Echo "Запишите в файл следующие @reboot /sbin/iptables-restore < /root/rules"
+sleep 10
+
+crontab -e
+# записать в файл следующие
+# @reboot /sbin/iptables-restore < /root/rules
+Echo "проверите iptables -t nat -L"
+Echo "Перезагрзка будет выполнена через 5 секунд"
+sleep 5
+reboot

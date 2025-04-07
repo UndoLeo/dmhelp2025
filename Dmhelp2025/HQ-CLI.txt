@@ -1,0 +1,15 @@
+
+#Настройка имени и времени
+hostnamectl set-hostname hq-cli.au-team.irpo;exec bash
+timedatectl set-timezone Asia/Vladivostok
+
+#Настройка vlan 
+mkdir /etc/net/ifaces/ens20.200
+touch /etc/ifaces/ens20.200/options
+cat << EOF > /etc/ifaces/ens20.200/options
+TYPE=vlan
+HOST=ens20
+VID=200
+DISABLED=no
+BOOTPROTO=dhcp
+EOF

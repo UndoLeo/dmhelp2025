@@ -1,0 +1,106 @@
+#!/bin/bash
+
+#Настройка имени и времени
+hostnamectl set-hostname hq-rtr.au-team.irpo
+timedatectl set-timezone Asia/Vladivostok
+
+#Настройка пользователя net_admin 
+useradd net_admin -m 
+echo "Пароль для net_admin P@ssw0rd"
+passwd net_admin
+
+echo net_admin   ALL=(ALL:ALL) NOPASSWD: ALL /etc/sudoers 
+#Настройка маршрутизации и vlan-интерфейсов
+cat <<EOF > /etc/network/interfaces
+auto ens19 
+		iface ens19 inet static
+		address 172.16.4.2/28
+		gateway 172.16.4.1
+auto ens20
+	iface ens20 inet manual
+auto ens20.100
+	iface ens20.100 inet static
+	address 192.168.1.1/26
+	vlan-raw-device ens20
+auto ens20.200
+	iface ens20.200 inet static
+	address 192.168.2.1/26
+	vlan-raw-device ens20
+auto ens20.999
+	iface ens20.999 inet static
+	address 192.168.3.1/26
+	vlan-raw-device ens20
+auto gre1
+	iface gre1 inet tunnel
+	address 10.10.10.1
+	netmask 255.255.255.252
+	mode gre
+	local 172.16.4.2
+	endpoint 172.16.5.2
+	ttl 255
+EOF
+
+systemctl restart networking
+
+#Включаем ip-forwarding
+sysctl -w net.ipv4.ip_forward=1
+sysctl -p
+
+#Настройка iptables \\ Проверить что он установлен
+#проверка есть ли iptables 
+$iptables
+#Если он есть то выведит команды
+
+iptables -t nat -A POSTROUTING -s 192.168.1.0/26 -o ens19 -j MASQUERADE
+iptables -t nat -A POSTROUTING -s 192.168.2.0/28 -o ens19 -j MASQUERADE
+iptables -t nat -A POSTROUTING -s 192.168.3.0/29 -o ens19 -j MASQUERADE
+iptables-save > /root/rules
+export EDITOR=nano
+Echo "Запишите в файл следующие @reboot /sbin/iptables-restore < /root/rules"
+sleep 10
+
+crontab -e
+# записать в файл следующие
+# @reboot /sbin/iptables-restore < /root/rules
+Echo "проверите iptables -t nat -L"
+
+#Настройка ospf
+sed -i 's/deb/#deb' /etc/apt/sources.list
+echo "deb [trusted=yes] http://deb.debian.org/debian buster main" /etc/apt/sources.list
+echo nameserver 8.8.8.8 /etc/resolv.conf
+apt update 
+apt install frr -y
+sed -i 's/ospfd=no/ospfd=yes/' /etc/frr/daemons
+systemctl restart frr
+#Настройка роутера ospf
+echo "Для настройки роутера введите vtysh"
+echo "используйте эту настройку"
+echo "conf t"
+echo "router ospf"
+echo "network 10.10.10.0/30 area 0"
+echo "network 192.168.1.0/26 area 0"
+echo "network 192.168.2.0/28 area 0"
+echo "network 192.168.3.0/29 area 0"
+echo "do wr mem"
+echo "ex"
+echo "int gre1"
+echo "ip ospf authentication message-digest"
+echo "ip ospf message-digest-key 1 md5 P@ssw0rd"
+echo "do wr mem"
+echo "ex"
+echo "ex"
+
+sed -i 's/#deb/deb' /etc/apt/sources.list
+sed -i 's/deb [trusted=yes] http://deb.debian.org/debian buster main/#deb [trusted=yes] http://deb.debian.org/debian buster main' /etc/apt/sources.list2
+
+#Настройка dhcp
+
+apt install dnsmasq
+
+echo no-resolv /etc/dnsmasq.conf
+echo dhcp-range=192.168.2.2,192.168.2.14,9999h /etc/dnsmasq.conf
+echo dhcp-option=3,192.168.2.1 /etc/dnsmasq.conf
+echo dhcp-option=6,192.168.1.2 /etc/dnsmasq.conf
+echo interface=ens19.200 /etc/dnsmasq.conf
+
+systemctl restart dnsmasq
